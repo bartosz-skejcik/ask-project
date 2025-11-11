@@ -25,6 +25,9 @@ string fraction(float128 num, int precision) {
 
   // Gdyby użyć double to może zabraknąć precyzji i po ~52 iteracjach totalnie
   // się psuje
+  //
+  // Niby można sprawdzić czy po jakimś czasie się nie powtarza ale mi sie nie
+  // chce
   if (num == 0) {
     for (int i = 0; i < precision; i++) {
       result += "0";
