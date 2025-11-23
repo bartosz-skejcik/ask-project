@@ -21,6 +21,11 @@ int main() {
 
   cout << "The exponent for base 2 is " << exp << endl;
 
+  if (bits == "0") {
+    cout << "The number is zero." << endl;
+    return 0;
+  }
+
   string ieee = ieee74(n, bits.substr(1), exp, 128);
 
   cout << "The IEEE 754 representation is ";
