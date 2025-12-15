@@ -1,8 +1,20 @@
 #include "gui.h"
 
 #include "conversion.h"
-#include "raylib.h"
-#include <algorithm>
+
+#include <QApplication>
+#include <QFont>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMainWindow>
+#include <QPlainTextEdit>
+#include <QPushButton>
+#include <QString>
+#include <QStringList>
+#include <QVBoxLayout>
+#include <QWidget>
 #include <string>
 #include <vector>
 
@@ -13,269 +25,256 @@ using namespace conversion;
 
 namespace {
 
-vector<string> BuildBitLines(const string &bits, size_t bitsPerLine = 32) {
-  vector<string> lines;
-
+QString BuildGroupedBitLines(const string &bits, size_t bitsPerLine = 32) {
+  QStringList lines;
   for (size_t i = 0; i < bits.size(); i += bitsPerLine) {
     string chunk = bits.substr(i, bitsPerLine);
     string grouped;
     for (size_t j = 0; j < chunk.size(); ++j) {
       if (j > 0 && j % 4 == 0) {
-        grouped += ' ';
+        grouped.push_back(' ');
       }
-      grouped += chunk[j];
+      grouped.push_back(chunk[j]);
     }
-    lines.push_back(grouped);
+    lines.push_back(QString::fromStdString(grouped));
+  }
+  return lines.join("\n");
+}
+
+QString BuildStripLabel(const ConversionResult &result) {
+  QString sign = QString("Znak (1): %1").arg(
+      QString::fromStdString(result.signBit));
+  QString exp = QString("Wykładnik (15): %1").arg(
+      QString::fromStdString(result.exponentBits));
+  QString mantissa = QString("Mantysa (112): w panelu poniżej");
+  return QStringList{sign, exp, mantissa}.join("\n");
+}
+
+class ConverterWindow : public QMainWindow {
+public:
+  ConverterWindow();
+
+private:
+  void HandleConvert();
+  void HandleClear();
+  void RenderResult(const ConversionResult &result);
+  void RenderPlaceholder();
+  void SetStatus(const QString &text, const QString &color);
+
+  QLineEdit *input_ = nullptr;
+  QLabel *status_ = nullptr;
+  QLabel *summary_ = nullptr;
+  QLabel *strip_ = nullptr;
+  QPlainTextEdit *mantissa_ = nullptr;
+  QPlainTextEdit *bits_ = nullptr;
+};
+
+ConverterWindow::ConverterWindow() {
+  setWindowTitle("Konwerter IEEE 754 (128 bitów)");
+  setMinimumSize(1000, 640);
+
+  auto *central = new QWidget(this);
+  central->setStyleSheet(
+      "background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+      " stop:0 #0D1628, stop:1 #0A0F1A);");
+  auto *layout = new QVBoxLayout(central);
+  layout->setContentsMargins(28, 24, 28, 24);
+  layout->setSpacing(14);
+
+  QFont monoFont("Monospace");
+  monoFont.setStyleHint(QFont::TypeWriter);
+
+  auto *title = new QLabel("Konwerter IEEE 754 (128 bitów)", this);
+    title->setStyleSheet(
+      "font-size: 26px; font-weight: 700; letter-spacing: 0.5px;"
+      " color: #E8ECF3;");
+  auto *subtitle = new QLabel("Interfejs Qt z konwersją na żywo", this);
+    subtitle->setStyleSheet(
+      "font-size: 14px; color: #B8C1D1; letter-spacing: 0.3px;");
+  layout->addWidget(title);
+  layout->addWidget(subtitle);
+
+  input_ = new QLineEdit(this);
+  input_->setPlaceholderText("Wpisz liczbę dziesiętną (np. 263.3)");
+  input_->setClearButtonEnabled(true);
+  input_->setMinimumHeight(42);
+  input_->setStyleSheet(R"(
+      QLineEdit {
+        background: #0F1626;
+        color: #E8ECF3;
+        border: 1px solid #2E3D57;
+        padding: 12px;
+        border-radius: 10px;
+        font-size: 16px;
+      }
+      QLineEdit:focus {
+        border: 1px solid #5A8DFF;
+      }
+  )");
+  layout->addWidget(input_);
+
+  auto *buttonRow = new QHBoxLayout();
+  buttonRow->setSpacing(12);
+  buttonRow->setContentsMargins(0, 0, 0, 2);
+
+  auto *convertBtn = new QPushButton("Konwertuj", this);
+    convertBtn->setStyleSheet(R"(
+      QPushButton { background: #466CBE; color: #F4F7FB; border: none;
+            padding: 10px 16px; border-radius: 8px; font-size: 15px; }
+      QPushButton:hover { background: #567FD9; }
+      QPushButton:pressed { background: #3A5AA0; }
+    )");
+  auto *clearBtn = new QPushButton("Wyczyść", this);
+    clearBtn->setStyleSheet(R"(
+      QPushButton { background: #6C7485; color: #F4F7FB; border: none;
+            padding: 10px 16px; border-radius: 8px; font-size: 15px; }
+      QPushButton:hover { background: #7D869B; }
+      QPushButton:pressed { background: #575F70; }
+    )");
+
+  buttonRow->addWidget(convertBtn);
+  buttonRow->addWidget(clearBtn);
+  buttonRow->addStretch();
+  layout->addLayout(buttonRow);
+
+  status_ = new QLabel("Wpisz liczbę dziesiętną i kliknij Konwertuj.", this);
+  status_->setWordWrap(true);
+  status_->setStyleSheet(
+      "background: #1C2636; color: #E8ECF3; padding: 12px 14px;"
+      "border-radius: 12px; font-size: 14px; letter-spacing: 0.2px;");
+  layout->addWidget(status_);
+
+  auto *summaryFrame = new QFrame(this);
+  summaryFrame->setFrameShape(QFrame::StyledPanel);
+  summaryFrame->setFrameShadow(QFrame::Plain);
+  summaryFrame->setStyleSheet(
+      "QFrame { background: #0D131F; border: none; border-radius: 10px; }");
+  auto *summaryLayout = new QVBoxLayout(summaryFrame);
+  summaryLayout->setContentsMargins(16, 14, 16, 14);
+  summaryLayout->setSpacing(8);
+  summary_ = new QLabel("Wynik pojawi się po konwersji.", summaryFrame);
+  summary_->setWordWrap(true);
+  summary_->setStyleSheet("color: #E8ECF3; font-size: 15px;");
+  summaryLayout->addWidget(summary_);
+
+  strip_ = new QLabel(summaryFrame);
+  strip_->setWordWrap(true);
+  strip_->setStyleSheet("color: #9AC7FF; font-family: 'Courier New', monospace;"
+                        " font-size: 14px; margin-top: 6px;");
+  summaryLayout->addWidget(strip_);
+  layout->addWidget(summaryFrame);
+
+    auto *mantissaFrame = new QFrame(this);
+    mantissaFrame->setFrameShape(QFrame::StyledPanel);
+    mantissaFrame->setFrameShadow(QFrame::Plain);
+    mantissaFrame->setStyleSheet(
+        "QFrame { background: #0E1524; border: none; border-radius: 10px; }");
+    auto *mantissaLayout = new QVBoxLayout(mantissaFrame);
+      mantissaLayout->setContentsMargins(16, 14, 16, 14);
+      mantissaLayout->setSpacing(8);
+
+    auto *mantissaTitle = new QLabel("Mantysa (112 bitów)", mantissaFrame);
+    mantissaTitle->setStyleSheet(
+      "color: #E8ECF3; font-size: 15px; font-weight: 600;");
+    mantissaLayout->addWidget(mantissaTitle);
+
+    mantissa_ = new QPlainTextEdit(mantissaFrame);
+    mantissa_->setReadOnly(true);
+    mantissa_->setMinimumHeight(140);
+    mantissa_->setLineWrapMode(QPlainTextEdit::NoWrap);
+    mantissa_->setFont(monoFont);
+    mantissa_->setStyleSheet(
+        "QPlainTextEdit { background: #0F1626; color: #C9D6EA;"
+        " border: none; border-radius: 8px; padding: 10px; }");
+    mantissaLayout->addWidget(mantissa_);
+    layout->addWidget(mantissaFrame);
+
+  auto *bitsFrame = new QFrame(this);
+  bitsFrame->setFrameShape(QFrame::StyledPanel);
+      bitsFrame->setFrameShadow(QFrame::Plain);
+  bitsFrame->setStyleSheet(
+      "QFrame { background: #0A0F1A; border: none; border-radius: 10px; }");
+  auto *bitsLayout = new QVBoxLayout(bitsFrame);
+  bitsLayout->setContentsMargins(16, 14, 16, 14);
+  bitsLayout->setSpacing(8);
+
+  auto *bitsTitle = new QLabel("IEEE 754 (128 bitów)", bitsFrame);
+  bitsTitle->setStyleSheet("color: #E8ECF3; font-size: 15px; font-weight: 600;");
+  bitsLayout->addWidget(bitsTitle);
+
+  bits_ = new QPlainTextEdit(bitsFrame);
+  bits_->setReadOnly(true);
+  bits_->setMinimumHeight(260);
+  bits_->setLineWrapMode(QPlainTextEdit::NoWrap);
+  bits_->setFont(monoFont);
+  bits_->setStyleSheet(
+      "QPlainTextEdit { background: #0F1626; color: #C9D6EA;"
+      " border: none; border-radius: 8px; padding: 10px; }");
+  bitsLayout->addWidget(bits_);
+  layout->addWidget(bitsFrame);
+
+  setCentralWidget(central);
+
+  connect(convertBtn, &QPushButton::clicked, this,
+          &ConverterWindow::HandleConvert);
+  connect(clearBtn, &QPushButton::clicked, this,
+          &ConverterWindow::HandleClear);
+
+  RenderPlaceholder();
+}
+
+void ConverterWindow::HandleConvert() {
+  const string raw = input_->text().toStdString();
+  ConversionResult result = ConvertToIEEE(raw);
+  if (!result.success) {
+    SetStatus(QString::fromStdString(result.errorMessage), "#C84C5C");
+    RenderPlaceholder();
+    return;
   }
 
-  return lines;
+  SetStatus("Konwersja zakończona powodzeniem.", "#5BA37C");
+  RenderResult(result);
 }
 
-bool DrawButton(const Rectangle &bounds, const string &label, Color baseColor) {
-  Vector2 mouse = GetMousePosition();
-  bool hovered = CheckCollisionPointRec(mouse, bounds);
-  bool pressed = hovered && IsMouseButtonDown(MOUSE_LEFT_BUTTON);
-
-  Color fill = hovered ? ColorAlpha(baseColor, pressed ? 0.9f : 0.7f)
-                       : ColorAlpha(baseColor, 0.5f);
-
-  DrawRectangleRounded(bounds, 0.25f, 8, fill);
-  DrawRectangleRoundedLines(bounds, 0.25f, 8,
-                            pressed ? ColorAlpha(baseColor, 0.9f)
-                                    : ColorAlpha(baseColor, 0.8f));
-
-  Font font = GetFontDefault();
-  const float fontSize = 20.0f;
-  Vector2 textSize = MeasureTextEx(font, label.c_str(), fontSize, 1.0f);
-  Vector2 textPos = {bounds.x + (bounds.width - textSize.x) / 2.0f,
-                     bounds.y + (bounds.height - textSize.y) / 2.0f};
-  DrawTextEx(font, label.c_str(), textPos, fontSize, 1.0f, RAYWHITE);
-
-  return hovered && IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
+void ConverterWindow::HandleClear() {
+  input_->clear();
+  SetStatus("Wpisz liczbę dziesiętną i kliknij Konwertuj.", "#28344B");
+  RenderPlaceholder();
 }
 
-void DrawInputField(const Rectangle &bounds, const string &value, bool active) {
-  Color bg = {20, 28, 44, 230};
-  Color border = active ? Color{83, 140, 255, 255} : Color{120, 135, 155, 200};
-  DrawRectangleRounded(bounds, 0.2f, 8, bg);
-  DrawRectangleRoundedLines(bounds, 0.2f, 8, border);
-
-  Font font = GetFontDefault();
-  const float fontSize = 28.0f;
-  string display = value.empty() ? "Enter decimal value (e.g. 263.3)" : value;
-  Color textColor = value.empty() ? Color{170, 180, 195, 255} : RAYWHITE;
-
-  Vector2 textPos = {bounds.x + 20.0f, bounds.y + bounds.height / 2.0f - 14.0f};
-  DrawTextEx(font, display.c_str(), textPos, fontSize, 1.0f, textColor);
-
-  if (active) {
-    Vector2 size = MeasureTextEx(font, value.c_str(), fontSize, 1.0f);
-    float cursorX = bounds.x + 20.0f + size.x + 3.0f;
-    float cursorHeight = bounds.height - 24.0f;
-    if (value.empty()) {
-      cursorX = bounds.x + 20.0f;
-    }
-    if ((static_cast<int>(GetTime() * 2) % 2) == 0) {
-      DrawRectangle(cursorX, bounds.y + (bounds.height - cursorHeight) / 2.0f,
-                    2, cursorHeight, RAYWHITE);
-    }
-  }
+void ConverterWindow::RenderResult(const ConversionResult &result) {
+  QString summaryText = QString("Bity części całkowitej: %1\nWykładnik (podstawa 2): %2")
+                            .arg(QString::fromStdString(result.integerBits))
+                            .arg(result.exponentValue);
+  summary_->setText(summaryText);
+  strip_->setText(BuildStripLabel(result));
+  mantissa_->setPlainText(BuildGroupedBitLines(result.mantissaBits, 32));
+  bits_->setPlainText(BuildGroupedBitLines(result.ieeeBits));
 }
 
-void DrawStatusBar(const string &message, Color color, float y) {
-  float width = GetScreenWidth() - 120.0f;
-  Rectangle bar = {60.0f, y, width, 44.0f};
-  DrawRectangleRounded(bar, 0.3f, 8, color);
-  DrawText(message.c_str(), static_cast<int>(bar.x + 18.0f),
-           static_cast<int>(bar.y + 12.0f), 20, RAYWHITE);
+void ConverterWindow::RenderPlaceholder() {
+  summary_->setText("Wynik pojawi się po konwersji.");
+  strip_->setText("Znak (1): -\nWykładnik (15): -\nMantysa (112): -");
+  mantissa_->setPlainText("Bity mantysy pojawią się tutaj po konwersji.");
+  bits_->setPlainText("Użyj Konwertuj, aby zobaczyć zapis 128-bitowy.");
 }
 
-void DrawBitStrip(const ConversionResult &result, float x, float width,
-                  float y) {
-  const float height = 60.0f;
-  float unit = width / 128.0f;
-  float signWidth = unit;
-  float exponentWidth = unit * 15.0f;
-  float mantissaWidth = width - signWidth - exponentWidth;
-
-  Rectangle signRect = {x, y, signWidth, height};
-  Rectangle expRect = {signRect.x + signRect.width, y, exponentWidth, height};
-  Rectangle mantRect = {expRect.x + expRect.width, y, mantissaWidth, height};
-
-  const Color signColor = {189, 59, 72, 255};
-  const Color expColor = {39, 117, 182, 255};
-  const Color mantColor = {56, 161, 105, 255};
-
-  DrawRectangleRec(signRect, signColor);
-  DrawRectangleRec(expRect, expColor);
-  DrawRectangleRec(mantRect, mantColor);
-
-  string signLabel = "Sign (1): " + result.signBit;
-  string expLabel = "Exponent (15): " + result.exponentBits;
-  string mantLabel =
-      "Mantissa (112): " + result.mantissaBits.substr(0, 32) + "...";
-
-  DrawText(signLabel.c_str(), static_cast<int>(signRect.x),
-           static_cast<int>(signRect.y - 24.0f), 18, signColor);
-  DrawText(expLabel.c_str(), static_cast<int>(expRect.x),
-           static_cast<int>(expRect.y - 24.0f), 18, expColor);
-  DrawText(mantLabel.c_str(), static_cast<int>(mantRect.x),
-           static_cast<int>(mantRect.y - 24.0f), 18, mantColor);
-}
-
-void DrawResultPanels(const ConversionResult &result, float topY) {
-  float width = GetScreenWidth() - 120.0f;
-  float x = 60.0f;
-
-  Rectangle summary = {x, topY, width, 110.0f};
-  DrawRectangleRounded(summary, 0.2f, 8, Color{15, 21, 33, 230});
-  DrawRectangleRoundedLines(summary, 0.2f, 8, Color{60, 80, 110, 255});
-
-  string line1 = "Integer bits: " + result.integerBits;
-  string line2 = "Exponent (base 2): " + std::to_string(result.exponentValue);
-  DrawText(line1.c_str(), static_cast<int>(summary.x + 20.0f),
-           static_cast<int>(summary.y + 24.0f), 22, RAYWHITE);
-  DrawText(line2.c_str(), static_cast<int>(summary.x + 20.0f),
-           static_cast<int>(summary.y + 60.0f), 22, RAYWHITE);
-
-  DrawBitStrip(result, x, width, summary.y + summary.height + 40.0f);
-
-  Rectangle bitsPanel = {x, summary.y + summary.height + 120.0f, width,
-                         static_cast<float>(GetScreenHeight()) -
-                             (summary.y + summary.height + 160.0f)};
-  bitsPanel.height = std::max(140.0f, bitsPanel.height);
-  DrawRectangleRounded(bitsPanel, 0.2f, 8, Color{12, 16, 26, 220});
-  DrawRectangleRoundedLines(bitsPanel, 0.2f, 8, Color{70, 90, 120, 255});
-
-  DrawText("IEEE 754 (128-bit)", static_cast<int>(bitsPanel.x + 16.0f),
-           static_cast<int>(bitsPanel.y + 16.0f), 22, RAYWHITE);
-
-  vector<string> lines = BuildBitLines(result.ieeeBits);
-  float textY = bitsPanel.y + 50.0f;
-  for (const string &line : lines) {
-    DrawText(line.c_str(), static_cast<int>(bitsPanel.x + 16.0f),
-             static_cast<int>(textY), 20, Color{200, 210, 225, 255});
-    textY += 28.0f;
-    if (textY > bitsPanel.y + bitsPanel.height - 30.0f) {
-      break;
-    }
-  }
-}
-
-void DrawBackground() {
-  int width = GetScreenWidth();
-  int height = GetScreenHeight();
-  Color top = {7, 11, 19, 255};
-  Color bottom = {25, 39, 63, 255};
-  DrawRectangleGradientV(0, 0, width, height, top, bottom);
-  DrawRectangleGradientV(0, 0, width, height / 2, Color{0, 0, 0, 0},
-                         Color{0, 0, 0, 40});
+void ConverterWindow::SetStatus(const QString &text, const QString &color) {
+  status_->setText(text);
+  status_->setStyleSheet(
+      QString(
+          "background: %1; color: #E8ECF3; padding: 10px 12px;"
+          "border-radius: 10px; font-size: 14px;")
+          .arg(color));
 }
 
 } // namespace
 
-void RunGuiMode() {
-  const int initialWidth = 1200;
-  const int initialHeight = 720;
-  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-  InitWindow(initialWidth, initialHeight, "IEEE 754 Quad Converter");
-  SetTargetFPS(60);
-
-  string input;
-  const size_t maxInputLength = 64;
-  bool inputActive = false;
-  bool requestConversion = false;
-  ConversionResult lastResult;
-  bool hasResult = false;
-  string statusText = "Type a decimal number and press Convert.";
-  Color statusColor = {40, 52, 75, 220};
-  const Color buttonColor = {70, 108, 190, 255};
-
-  while (!WindowShouldClose()) {
-    Rectangle inputBox = {60.0f, 120.0f, GetScreenWidth() - 120.0f, 64.0f};
-    Vector2 mouse = GetMousePosition();
-
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-      inputActive = CheckCollisionPointRec(mouse, inputBox);
-    }
-
-    if (inputActive) {
-      int key = GetCharPressed();
-      while (key > 0) {
-        if (key >= 32 && key <= 126 && input.length() < maxInputLength) {
-          input.push_back(static_cast<char>(key));
-        }
-        key = GetCharPressed();
-      }
-
-      if (IsKeyPressed(KEY_BACKSPACE) && !input.empty()) {
-        input.pop_back();
-      }
-
-      if (IsKeyPressed(KEY_ENTER)) {
-        requestConversion = true;
-      }
-    }
-
-    Rectangle convertBtn = {60.0f, 200.0f, 170.0f, 48.0f};
-    Rectangle clearBtn = {convertBtn.x + convertBtn.width + 12.0f, 200.0f,
-                          140.0f, 48.0f};
-
-    bool convertClicked = DrawButton(convertBtn, "Convert", buttonColor);
-    bool clearClicked =
-        DrawButton(clearBtn, "Clear", Color{120, 120, 120, 255});
-
-    if (convertClicked || requestConversion) {
-      lastResult = ConvertToIEEE(input);
-      hasResult = lastResult.success;
-      statusText = lastResult.success ? "Conversion successful."
-                                      : lastResult.errorMessage;
-      statusColor = lastResult.success ? Color{50, 120, 90, 230}
-                                       : Color{160, 60, 70, 230};
-      requestConversion = false;
-    }
-
-    if (clearClicked) {
-      input.clear();
-      hasResult = false;
-      statusText = "Type a decimal number and press Convert.";
-      statusColor = Color{40, 52, 75, 220};
-    }
-
-    BeginDrawing();
-    ClearBackground(BLACK);
-    DrawBackground();
-
-    DrawText("IEEE 754 Quad Converter", 60, 40, 36, RAYWHITE);
-    DrawText("Built with raylib for instant feedback", 60, 84, 20,
-             Color{180, 190, 210, 255});
-
-    DrawInputField(inputBox, input, inputActive);
-
-    DrawStatusBar(statusText, statusColor, 270.0f);
-
-    if (hasResult) {
-      DrawResultPanels(lastResult, 330.0f);
-    } else {
-      Rectangle placeholder = {60.0f, 330.0f, GetScreenWidth() - 120.0f,
-                               GetScreenHeight() - 380.0f};
-      placeholder.height = std::max(140.0f, placeholder.height);
-      DrawRectangleRounded(placeholder, 0.2f, 8, Color{10, 15, 24, 200});
-      DrawRectangleRoundedLines(placeholder, 0.2f, 8, Color{55, 70, 96, 255});
-      DrawText("Results will appear here",
-               static_cast<int>(placeholder.x + 20.0f),
-               static_cast<int>(placeholder.y + 24.0f), 22,
-               Color{185, 195, 210, 255});
-      DrawText("Press Convert to visualize the IEEE 754 breakdown.",
-               static_cast<int>(placeholder.x + 20.0f),
-               static_cast<int>(placeholder.y + 60.0f), 20,
-               Color{120, 135, 155, 255});
-    }
-
-    EndDrawing();
-  }
-
-  CloseWindow();
+int RunGuiMode(int argc, char **argv) {
+  QApplication app(argc, argv);
+  ConverterWindow window;
+  window.show();
+  return app.exec();
 }
 
 } // namespace gui

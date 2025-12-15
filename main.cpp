@@ -16,7 +16,7 @@ namespace {
 void RunCliMode() {
   string input;
   if (!(cin >> input)) {
-    cerr << "Failed to read input." << endl;
+    cerr << "Nie udało się odczytać danych wejściowych." << endl;
     return;
   }
 
@@ -26,11 +26,11 @@ void RunCliMode() {
     return;
   }
 
-  cout << "The binary representation of " << result.integerPart << " is "
-       << result.integerBits << endl;
-  cout << "The exponent for base 2 is " << result.exponentValue << endl;
+    cout << "Reprezentacja binarna liczby " << result.integerPart << " to "
+      << result.integerBits << endl;
+    cout << "Wykładnik dla podstawy 2 to " << result.exponentValue << endl;
 
-  cout << "The IEEE 754 representation is ";
+    cout << "Reprezentacja IEEE 754 to ";
   for (size_t i = 0; i < result.ieeeBits.length(); i++) {
     if (i == 0) {
       cout << "\033[41m" << result.ieeeBits[i] << "\033[0m";
@@ -41,7 +41,7 @@ void RunCliMode() {
     }
   }
 
-  cout << endl << "The length is: " << result.ieeeBits.length() << endl;
+  cout << endl << "Długość: " << result.ieeeBits.length() << endl;
 }
 
 } // namespace
@@ -52,6 +52,5 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  RunGuiMode();
-  return 0;
+  return RunGuiMode(argc, argv);
 }

@@ -39,7 +39,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
 
   string trimmed = Trim(rawInput);
   if (trimmed.empty()) {
-    result.errorMessage = "Please enter a decimal number.";
+    result.errorMessage = "Wpisz liczbę dziesiętną.";
     return result;
   }
 
@@ -66,7 +66,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
 
     if (integerPart == 0) {
       result.errorMessage =
-          "Values with |x| < 1 are not supported by this converter yet.";
+          "Wartości o |x| < 1 nie są jeszcze obsługiwane przez ten konwerter.";
       return result;
     }
 
@@ -87,7 +87,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     result.ieeeBits = ieee;
     result.success = true;
   } catch (const std::exception &) {
-    result.errorMessage = "Unable to parse number. Please check the format.";
+    result.errorMessage = "Nie można odczytać liczby. Sprawdź format.";
   }
 
   return result;

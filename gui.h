@@ -3,7 +3,7 @@
 
 namespace gui {
 
-void RunGuiMode();
+int RunGuiMode(int argc, char **argv);
 
 } // namespace gui
 
