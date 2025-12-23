@@ -10,7 +10,7 @@ string binary(string n);
 
 string fraction(string frac, size_t precision, int *pexpshift = nullptr);
 
-int exponentFromInteger(string base);
+int exponentFromInteger(string &base);
 
 string Trim(const string &text);
 
