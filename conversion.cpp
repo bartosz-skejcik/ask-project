@@ -78,34 +78,37 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
       return result;
     }
 
-    string integerBits = binary(integerPart);
+    string integerBits = Binary(integerPart);
     result.integerPart = integerPart;
     result.integerBits = integerBits.substr(0, min<size_t>(MANTISSA_LEN + 1, integerBits.length()));
 
     int fractionLeadingZeroesCount = 0; // dla liczb typu 0,0...01b
-    string fractionBitsRaw = fraction(
+    // w tej zmiennej mogą być wiodące "0" i będzie niejawna 1, używa się do zaokrąglenia mantysy
+    string fractionBitsRaw = Fraction(
       fractionPart,
       MANTISSA_LEN + 2, // +1 dla niejawnej jedynki, +1 dla otrzymania bitu od razu za LSB do poprawnego zaokrąglenia
       &fractionLeadingZeroesCount
     );
-    // przesunięcie mantysy dla liczb typu 0,0...01
+    // w tej zmiennej będzie ułamek, który zostanie przepisany do mantysy
     string fractionBits = fractionBitsRaw;
     if (integerPart.length() == 0 || isZeroesString(integerPart)) {
-      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1); // zawsze +1 dla niejawnej jedynki
+    // przesunięcie mantysy dla liczb typu 0,0...01 + 1 dla nejawnej jedynki
+      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1);
     }
 
 
     // wpisanie liczby całej do mantysy bez niejawnej 1 na początku
     if (result.integerBits.length() > 0 && !isZeroesString(result.integerBits))
-      result.mantissaBits = result.integerBits.substr(1, // niejawna 1 jest ominięta
-          min<size_t>(result.integerBits.length(), MANTISSA_LEN + 1)
+      result.mantissaBits = result.integerBits.substr(
+        1, // niejawna 1 jest ominięta
+        min<size_t>(result.integerBits.length(), MANTISSA_LEN)
       );
     else result.mantissaBits = ""; // mantysa będzie złożona tylko z ułamku
 
     if (result.mantissaBits.length() < MANTISSA_LEN) // dopełnienie mantysy częścią ułamkową
       result.mantissaBits += fractionBits.substr(0, min<size_t>(fractionBits.length(), MANTISSA_LEN - result.mantissaBits.length()));
-    result.mantissaBits = result.mantissaBits.substr(0, min<size_t>(result.mantissaBits.length(), MANTISSA_LEN));
 
+    result.mantissaBits = result.mantissaBits.substr(0, min<size_t>(result.mantissaBits.length(), MANTISSA_LEN));
     if (result.mantissaBits.length() < MANTISSA_LEN)
       result.mantissaBits += string(MANTISSA_LEN - result.mantissaBits.length(), '0'); // zera na końcu, żeby było 112 bit
 
@@ -116,14 +119,14 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     if (integerPart.length() == 0 || isZeroesString(integerPart)) {
       exp = -(fractionLeadingZeroesCount + 1);
     } else {
-      exp = exponentFromInteger(integerBits);
+      exp = ExponentFromInteger(integerBits);
     }
 
 
     RoundMantissa(result.mantissaBits, exp, integerBits, fractionBitsRaw, fractionLeadingZeroesCount);
 
 
-    string exponentBits = binary(to_string(exp + EXPONENT_BIAS));
+    string exponentBits = Binary(to_string(exp + EXPONENT_BIAS));
     if (exponentBits.length() < EXPONENT_LEN)
       exponentBits = string(EXPONENT_LEN - exponentBits.length(), '0') + exponentBits;
     exponentBits = exponentBits.substr(0, min<size_t>(exponentBits.length(), EXPONENT_LEN));
@@ -150,21 +153,22 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
 static void RoundMantissa(
   string &mantissa, int &exponent,
   const string &integerBits, const string &fractionBits, const int &fractionLeadingZeroesCount
-) {
+)
+{
   bool noIntegerPart = false;
   if (integerBits.length() == 0 || isZeroesString(integerBits)) noIntegerPart = true;
 
   bool bitBehindLSB = false;
   if (
       ((integerBits.length() > MANTISSA_LEN) && integerBits[MANTISSA_LEN + 1] == '1' )
-        || ((fractionBits.length() > MANTISSA_LEN + 1) &&
-          fractionBits[
-          (noIntegerPart ? (fractionLeadingZeroesCount + MANTISSA_LEN + 1)
-           : (MANTISSA_LEN + 1 - integerBits.length())
-           )] == '1'
-        )
-      ) {
-      bitBehindLSB = true;
+      || ((fractionBits.length() > MANTISSA_LEN + 1) &&
+        fractionBits[(
+          noIntegerPart
+          ? (fractionLeadingZeroesCount + MANTISSA_LEN + 1) // ostatni bit za LSB w części całej
+          : (MANTISSA_LEN + 1 - integerBits.length()) // ostatni bit za LSB w ułamku
+          )] == '1')
+     ) {
+    bitBehindLSB = true;
   }
 
   if (bitBehindLSB) { // dodanie 1 do mantysy
@@ -178,7 +182,7 @@ static void RoundMantissa(
         carry = false;
       }
     }
-    if (carry) exponent += 1;
+    if (carry) exponent += 1; // jeśli przepełniono mantysę, trzeba dodać 1 do wykładnika
   }
 }
 

@@ -28,7 +28,7 @@ bool isZeroesString(string n) {
  * Przyjmuje cześć całkowitą liczby jako string, działa na dużych liczbach.
  * Zwraca ciąg znaków '0' oraz '1'.
  */
-string binary(string n) {
+string Binary(string n) {
   string bits = "";
   string n_half = "";
   bool carry;
@@ -42,7 +42,7 @@ string binary(string n) {
     carry = false;
     n_half = "";
     for (char c : n) {
-      int digit = (int)(c - '0');
+      int digit = static_cast<int>(c - '0');
       if (carry) // przesunięcie z poprzedniego dzielenia
         digit += 10;
 
@@ -67,7 +67,7 @@ string binary(string n) {
  * Przyjmuje pointera na int, do którego będzie zapisana liczność zer na początku liczby, jeśli on nie jest nullptr.
  * Zwraca string z reprezentacją ułamku zawierający tylko znaki '0' oraz '1' o długości ograniczonej do precision + ilość zer na początku.
  */
-string fraction(string frac, size_t precision, int *pLeadingZeroes) {
+string Fraction(string frac, size_t precision, int *pLeadingZeroes) {
   string result = "";
   size_t leadingZeroes = 0;
   bool countingLeadingZeroes = true;
@@ -81,7 +81,7 @@ string fraction(string frac, size_t precision, int *pLeadingZeroes) {
     bool carry = false;
     for (size_t i = frac.length(); i != 0; i--) {
       // w pętli wykonuję się mnożenie przez 2 każdej cyfry podanej liczby, zaczynając z końca
-      int digit = frac[i - 1] - '0';
+      int digit = static_cast<int>(frac[i - 1] - '0');
 
       digit *= 2;
       if (carry) digit++;
@@ -113,7 +113,7 @@ string fraction(string frac, size_t precision, int *pLeadingZeroes) {
 /**
  * Oblicza wykładnik IEEE754 dla liczb |n| > 1 z części całej liczby binarnej podanej jako string.
  */
-int exponentFromInteger(string &base) {
+int ExponentFromInteger(string &base) {
   int shifts = base.length() - 1;
 
   return shifts;
