@@ -73,6 +73,10 @@ run: $(TARGET)
 
 # Clean generated files and directories
 clean:
+	-@$(RM) Makefile.qmake
+	-@$(RM) Makefile.qmake.Debug
+	-@$(RM) Makefile.qmake.Release
+	-@$(RM) static_main_plugin_import.cpp
 	$(RMDIR) $(BUILD_DIR) $(BIN_DIR)
 
 # Tests

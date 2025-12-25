@@ -11,10 +11,6 @@ namespace conversion {
 
 using namespace std;
 
-namespace {
-
-} // namespace
-
 static void RoundMantissa(string &mantissa, int &exponent,const string &integerBits, const string &fractionBits, const int &fractionLeadingZeroesCount);
 
 // sprawdza format podanej liczby
@@ -56,11 +52,11 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     result.isNegative = (normalizedInput.length() > 0 && normalizedInput[0] == '-');
     size_t dotPosition = normalizedInput.find('.');
 
-    string integerPart = normalizedInput.substr(0, dotPosition);
+    string integerPart = normalizedInput.substr(0, dotPosition); // bez '-' na początku
     if (result.isNegative) integerPart = integerPart.substr(1);
 
-    string fractionPart;
-    if (dotPosition == string::npos) fractionPart = "";
+    string fractionPart; // tylko same bityu ułamku, bez "0."
+    if (dotPosition == string::npos) fractionPart = ""; // "" jeśli niema ułamku
     else fractionPart = normalizedInput.substr(dotPosition + 1);
 
     // dla zero
@@ -68,7 +64,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
                  && (fractionPart.length() == 0 || isZeroesString(fractionPart));
     if (result.isZero) {
       result.success = true;
-      result.signBit = result.isNegative ? "1" : "0";
+      result.signBit = result.isNegative ? "1" : "0"; // W IEEE 754 istnieje wartość -0.0
       result.exponentBits = string(EXPONENT_LEN, '0');
       result.mantissaBits = string(MANTISSA_LEN, '0');
       result.ieeeBits =
@@ -89,11 +85,11 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
       MANTISSA_LEN + 2, // +1 dla niejawnej jedynki, +1 dla otrzymania bitu od razu za LSB do poprawnego zaokrąglenia
       &fractionLeadingZeroesCount
     );
-    // w tej zmiennej będzie ułamek, który zostanie przepisany do mantysy
+    // w tej zmiennej będzie ułamek bez wiodących "0" oraz niejawnej 1, który zostanie przepisany do mantysy
     string fractionBits = fractionBitsRaw;
     if (integerPart.length() == 0 || isZeroesString(integerPart)) {
-    // przesunięcie mantysy dla liczb typu 0,0...01 + 1 dla nejawnej jedynki
-      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1);
+    // przesunięcie mantysy dla liczb typu 0,0...01
+      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1); // + 1 dla nejawnej jedynki
     }
 
 
@@ -128,7 +124,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
 
     string exponentBits = Binary(to_string(exp + EXPONENT_BIAS));
     if (exponentBits.length() < EXPONENT_LEN)
-      exponentBits = string(EXPONENT_LEN - exponentBits.length(), '0') + exponentBits;
+      exponentBits = string(EXPONENT_LEN - exponentBits.length(), '0') + exponentBits; // zera na początku, jeśli niema 15 bit
     exponentBits = exponentBits.substr(0, min<size_t>(exponentBits.length(), EXPONENT_LEN));
 
 
@@ -160,30 +156,31 @@ static void RoundMantissa(
 
   bool bitBehindLSB = false;
   if (
-      ((integerBits.length() > MANTISSA_LEN) && integerBits[MANTISSA_LEN + 1] == '1' )
-      || ((fractionBits.length() > MANTISSA_LEN + 1) &&
+      ((integerBits.length() > MANTISSA_LEN) && integerBits[MANTISSA_LEN + 1] == '1' ) // ostatni bit za LSB w części całej
+      || ((fractionBits.length() > MANTISSA_LEN + 1) &&                                // ostatni bit za LSB w ułamku
         fractionBits[(
-          noIntegerPart
-          ? (fractionLeadingZeroesCount + MANTISSA_LEN + 1) // ostatni bit za LSB w części całej
-          : (MANTISSA_LEN + 1 - integerBits.length()) // ostatni bit za LSB w ułamku
+          noIntegerPart // czy mantysa jest złożona tylko z ułamku podanej liczby
+          ? (fractionLeadingZeroesCount + MANTISSA_LEN + 1) // ostatni bit za LSB w ułamku (przesuniętym jeśli trzeba)
+          : (MANTISSA_LEN + 1 - integerBits.length())       // ostatni bit za LSB w ułamku po części całej
           )] == '1')
      ) {
     bitBehindLSB = true;
   }
 
-  if (bitBehindLSB) { // dodanie 1 do mantysy
-    bool carry = true;
-    for (size_t i = mantissa.length(); i != 0; i--) {
-      if (!carry) break;
-      if (mantissa[i - 1] == '1') {
-        mantissa[i - 1] = '0';
-      } else {
-        mantissa[i - 1] = '1';
-        carry = false;
-      }
+  if (!bitBehindLSB) return; // jeśli bit za LSB 0 to nic nie trzeba robić
+
+  // odejmowanie 1 od mantysy
+  bool carry = true;
+  for (size_t i = mantissa.length(); i != 0; i--) {
+    if (!carry) break;
+    if (mantissa[i - 1] == '1') {
+      mantissa[i - 1] = '0';
+    } else {
+      mantissa[i - 1] = '1';
+      carry = false;
     }
-    if (carry) exponent += 1; // jeśli przepełniono mantysę, trzeba dodać 1 do wykładnika
   }
+  if (carry) exponent += 1; // jeśli przepełniono mantysę, trzeba dodać 1 do wykładnika
 }
 
 } // namespace conversion

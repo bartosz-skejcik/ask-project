@@ -19,7 +19,20 @@
 #include <string>
 #include <vector>
 
+#ifdef QT_STATIC_BUILD
+#include <QtPlugin>
+# ifdef WIN32
+  Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
+# endif
+#endif
+
+#ifndef INPUT_MAX_CHARS
 #define INPUT_MAX_CHARS 150
+#endif
+
+#ifndef SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS
+#define SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS 90
+#endif
 
 namespace gui {
 
@@ -260,7 +273,8 @@ void ConverterWindow::HandleClear() {
 
 void ConverterWindow::RenderResult(const ConversionResult &result) {
   QString summaryText = QString("Bity części całkowitej: %1\nWykładnik (podstawa 2): %2")
-                            .arg(TruncateWithDots(QString::fromStdString(result.integerBits), 90))
+                            .arg(TruncateWithDots(QString::fromStdString(result.integerBits),
+                                 SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS))
                             .arg(result.exponentValue);
   summary_->setText(summaryText);
   strip_->setText(BuildStripLabel(result));
