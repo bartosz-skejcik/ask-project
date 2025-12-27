@@ -1,85 +1,130 @@
 #include "utils.h"
-#include "boost/multiprecision/float128.hpp"
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <string>
 
 using namespace std;
-using namespace boost::multiprecision;
 
-string binary(int n) {
-  if (n == 0) {
-    return "0";
-  }
+bool isBinaryString(const string &n) {
+  for (char c : n)
+    if (!(c == '0' || c == '1')) return false;
+  return true;
+}
 
+bool isNumberString(const string &n) {
+  for (char c : n) if (!isdigit(c)) return false;
+  return true;
+}
+
+bool isZeroesString(string n) {
+  for (char c : n) if (c != '0')
+      return false;
+  return true;
+}
+
+/**
+ * Konwertuje zapis liczby z systemu dziesiętnego do binarnego.
+ * Przyjmuje cześć całkowitą liczby jako string, działa na dużych liczbach.
+ * Zwraca ciąg znaków '0' oraz '1'.
+ */
+string Binary(string n) {
   string bits = "";
-  int current = n;
+  string n_half = "";
+  bool carry;
 
-  while (current != 0) {
-    int remainder = current % 2;
-    bits = to_string(remainder) + bits;
-    current = current / 2;
+  assert(isNumberString(n));
+  if (n == "") return "";
+  n = Trim(n);
+
+  while (n.length() > 0 && !isZeroesString(n)) {
+    // dzielenie przez 2 każdej cyfry podanej liczby
+    carry = false;
+    n_half = "";
+    for (char c : n) {
+      int digit = static_cast<int>(c - '0');
+      if (carry) // przesunięcie z poprzedniego dzielenia
+        digit += 10;
+
+      int digit_half = digit / 2;
+      carry = (digit % 2) == 1;
+
+      n_half.push_back(digit_half + '0');
+    }
+
+    bits.push_back(carry ? '1' : '0');
+    n = n_half;
   }
 
+  reverse(bits.begin(), bits.end());
   return bits;
 }
 
-string fraction(float128 num, int precision) {
+/**
+ * Konwertuje zapis ułamku z systemu dziesiętnego do binarnego.
+ * Przyjmuje ułamek jako string bez "0."
+ * Przyjmuje precyzyjność jako size_t.
+ * Przyjmuje pointera na int, do którego będzie zapisana liczność zer na początku liczby, jeśli on nie jest nullptr.
+ * Zwraca string z reprezentacją ułamku zawierający tylko znaki '0' oraz '1' o długości ograniczonej do precision + ilość zer na początku.
+ */
+string Fraction(string frac, size_t precision, int *pLeadingZeroes) {
   string result = "";
+  size_t leadingZeroes = 0;
+  bool countingLeadingZeroes = true;
 
-  if (precision <= 0) {
-    return result;
-  }
+  assert(isNumberString(frac));
+  if (frac == "") return "";
+  frac = Trim(frac);
 
-  if (num == 0) {
-    return string(static_cast<size_t>(precision), '0');
-  }
+  for (size_t _ = 0; _ < precision + leadingZeroes; _++) {
+    string doubled = "";
+    bool carry = false;
+    for (size_t i = frac.length(); i != 0; i--) {
+      // w pętli wykonuję się mnożenie przez 2 każdej cyfry podanej liczby, zaczynając z końca
+      int digit = static_cast<int>(frac[i - 1] - '0');
 
-  for (int i = 0; i < precision; i++) {
-    num = num * 2;
-    if (num >= 1) {
-      result += "1";
-      num = num - 1;
-    } else {
-      result += "0";
+      digit *= 2;
+      if (carry) digit++;
+
+      if (digit >= 10)
+        carry = true;
+      else
+        carry = false;
+
+      doubled += (digit % 10) + '0';
     }
+
+    result.append(carry ? "1" : "0"); // jeśli w tym miejscu jest przesunięcie, to wynik mnożenia przez 2 jest >= 1
+    if (carry) countingLeadingZeroes = false;
+    if (!carry && countingLeadingZeroes) leadingZeroes++;
+
+    reverse(doubled.begin(), doubled.end());
+    frac = doubled;
+
+    if (isZeroesString(frac)) break;
   }
+
+  if (pLeadingZeroes != nullptr)
+    *pLeadingZeroes = leadingZeroes;
 
   return result;
 }
 
-int exponent(string base) {
-  int shifts = base.length() - 1;
-
-  return shifts;
-}
-
-string ieee74(float128 digit, string bits, int exp, int precision, int bias) {
-  int sign = (digit < 0) ? 1 : 0;
-
-  digit = abs(digit);
-
-  int exponent_bits = 15;
-  int mantissa_bits = precision - exponent_bits - 1;
-
-  int fraction_count =
-      std::max(0, mantissa_bits - static_cast<int>(bits.length()));
-  string fraction_str = fraction(digit - int(digit), fraction_count);
-
-  int exp_decimal = bias + exp;
-  string exp_str = binary(exp_decimal);
-
-  while (static_cast<int>(exp_str.length()) < exponent_bits) {
-    exp_str = "0" + exp_str;
+string Trim(const string &text) {
+  size_t start = 0;
+  while (start < text.size() &&
+         isspace(static_cast<unsigned char>(text[start]))) {
+    start++;
   }
 
-  string mantissa_str = bits + fraction_str;
-
-  if (static_cast<int>(mantissa_str.length()) > mantissa_bits) {
-    mantissa_str = mantissa_str.substr(0, mantissa_bits);
-  } else if (static_cast<int>(mantissa_str.length()) < mantissa_bits) {
-    mantissa_str +=
-        string(static_cast<size_t>(mantissa_bits - mantissa_str.length()), '0');
+  if (start == text.size()) {
+    return "";
   }
 
-  return to_string(sign) + exp_str + mantissa_str;
+  size_t end = text.size() - 1;
+  while (end > start && isspace(static_cast<unsigned char>(text[end]))) {
+    end--;
+  }
+
+  return text.substr(start, end - start + 1);
 }

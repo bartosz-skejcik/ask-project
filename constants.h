@@ -1,0 +1,9 @@
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
+#define EXPONENT_BIAS 16383
+#define EXPONENT_LEN 15
+#define MANTISSA_LEN 112
+#define IEEE_LEN 128
+
+#endif

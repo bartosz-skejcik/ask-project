@@ -11,12 +11,28 @@
 #include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegExpValidator>
 #include <QString>
 #include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <string>
 #include <vector>
+
+#ifdef QT_STATIC_BUILD
+#include <QtPlugin>
+# ifdef WIN32
+  Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
+# endif
+#endif
+
+#ifndef INPUT_MAX_CHARS
+#define INPUT_MAX_CHARS 100
+#endif
+
+#ifndef SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS
+#define SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS 90
+#endif
 
 namespace gui {
 
@@ -41,6 +57,13 @@ QString BuildGroupedBitLines(const string &bits, size_t bitsPerLine = 32) {
   return lines.join("\n");
 }
 
+QString TruncateWithDots(const QString& s, int maxLength) {
+    if (s.length() <= maxLength) {
+        return s; // No need to truncate
+    }
+    return s.left(maxLength - 3) + "...";
+}
+
 QString BuildStripLabel(const ConversionResult &result) {
   QString sign = QString("Znak (1): %1").arg(
       QString::fromStdString(result.signBit));
@@ -60,6 +83,8 @@ private:
   void RenderResult(const ConversionResult &result);
   void RenderPlaceholder();
   void SetStatus(const QString &text, const QString &color);
+  void HandleInputRejected();
+  void HandleInputTextEdited();
 
   QLineEdit *input_ = nullptr;
   QLabel *status_ = nullptr;
@@ -111,6 +136,10 @@ ConverterWindow::ConverterWindow() {
         border: 1px solid #5A8DFF;
       }
   )");
+  input_->setMaxLength(INPUT_MAX_CHARS);
+  QRegExp inputValidatorRegExp = QRegExp("^(-?)([0-9]*)([,.]?)([0-9]*)$");
+  QRegExpValidator *inputValidator = new QRegExpValidator(inputValidatorRegExp, this);
+  input_->setValidator(inputValidator);
   layout->addWidget(input_);
 
   auto *buttonRow = new QHBoxLayout();
@@ -219,6 +248,12 @@ ConverterWindow::ConverterWindow() {
           &ConverterWindow::HandleConvert);
   connect(clearBtn, &QPushButton::clicked, this,
           &ConverterWindow::HandleClear);
+  connect(input_, &QLineEdit::returnPressed, this,
+          &ConverterWindow::HandleConvert);
+  connect(input_, &QLineEdit::inputRejected, this,
+          &ConverterWindow::HandleInputRejected);
+  connect(input_, &QLineEdit::textEdited, this,
+          &ConverterWindow::HandleInputTextEdited);
 
   RenderPlaceholder();
 }
@@ -244,7 +279,8 @@ void ConverterWindow::HandleClear() {
 
 void ConverterWindow::RenderResult(const ConversionResult &result) {
   QString summaryText = QString("Bity części całkowitej: %1\nWykładnik (podstawa 2): %2")
-                            .arg(QString::fromStdString(result.integerBits))
+                            .arg(TruncateWithDots(QString::fromStdString(result.integerBits),
+                                 SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS))
                             .arg(result.exponentValue);
   summary_->setText(summaryText);
   strip_->setText(BuildStripLabel(result));
@@ -266,6 +302,18 @@ void ConverterWindow::SetStatus(const QString &text, const QString &color) {
           "background: %1; color: #E8ECF3; padding: 10px 12px;"
           "border-radius: 10px; font-size: 14px;")
           .arg(color));
+}
+
+void ConverterWindow::HandleInputRejected() {
+  if (input_->text().length() == INPUT_MAX_CHARS) {
+    SetStatus("Przekroczono limit znaków pola tekstowego", "#7f6626");
+  } else {
+    SetStatus("Wpisany znak jest niedozwolony w tym miejscu", "#7f6626");
+  }
+}
+
+void ConverterWindow::HandleInputTextEdited() {
+  SetStatus("Wpisz liczbę dziesiętną i kliknij Konwertuj.", "#28344B");
 }
 
 } // namespace

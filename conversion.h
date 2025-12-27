@@ -11,7 +11,7 @@ struct ConversionResult {
   bool success = false;
   string errorMessage;
   string originalInput;
-  int integerPart = 0;
+  string integerPart = "0";
   string integerBits = "0";
   int exponentValue = 0;
   string signBit = "0";
