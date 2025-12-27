@@ -110,15 +110,6 @@ string Fraction(string frac, size_t precision, int *pLeadingZeroes) {
   return result;
 }
 
-/**
- * Oblicza wykładnik IEEE754 dla liczb |n| > 1 z części całej liczby binarnej podanej jako string.
- */
-int ExponentFromInteger(string &base) {
-  int shifts = base.length() - 1;
-
-  return shifts;
-}
-
 string Trim(const string &text) {
   size_t start = 0;
   while (start < text.size() &&

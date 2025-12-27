@@ -7,11 +7,20 @@
 #include <cstddef>
 #include <stdexcept>
 
+/* Do poprawnego zaokrąglenia zgodnym z IEEE 754 trzeba znać bity po mantysie. Bit Sticky jest ustawiony, kiedy po 
+ * następnych dwóch bitach za mantysą jest co najmniej jedna 1. Obliczenie tylko kolejnych 100 bitów może być nie
+ * najlepszym rozwiązaniem, ale powinno starczyć dla liczb obsługiwanych przez ten konwerter.
+ */
+#ifndef FRACTION_ROUNDING_BITS
+#define FRACTION_ROUNDING_BITS 100
+#endif
+
 namespace conversion {
 
 using namespace std;
 
 static void RoundMantissa(string &mantissa, int &exponent,const string &integerBits, const string &fractionBits, const int &fractionLeadingZeroesCount);
+static int ExponentFromInteger(string &n);
 
 // sprawdza format podanej liczby
 static bool ValidateInput(const string &rawInput) {
@@ -55,7 +64,7 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     string integerPart = normalizedInput.substr(0, dotPosition); // bez '-' na początku
     if (result.isNegative) integerPart = integerPart.substr(1);
 
-    string fractionPart; // tylko same bityu ułamku, bez "0."
+    string fractionPart; // tylko samy cyfry ułamku, bez "0."
     if (dotPosition == string::npos) fractionPart = ""; // "" jeśli niema ułamku
     else fractionPart = normalizedInput.substr(dotPosition + 1);
 
@@ -79,17 +88,19 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     result.integerBits = integerBits.substr(0, min<size_t>(MANTISSA_LEN + 1, integerBits.length()));
 
     int fractionLeadingZeroesCount = 0; // dla liczb typu 0,0...01b
+
     // w tej zmiennej mogą być wiodące "0" i będzie niejawna 1, używa się do zaokrąglenia mantysy
     string fractionBitsRaw = Fraction(
       fractionPart,
-      MANTISSA_LEN + 2, // +1 dla niejawnej jedynki, +1 dla otrzymania bitu od razu za LSB do poprawnego zaokrąglenia
+      MANTISSA_LEN + FRACTION_ROUNDING_BITS + 1, // +1 dla niejawnej jedynki +bity po mantysie do zaokrąglenia
       &fractionLeadingZeroesCount
     );
+
     // w tej zmiennej będzie ułamek bez wiodących "0" oraz niejawnej 1, który zostanie przepisany do mantysy
     string fractionBits = fractionBitsRaw;
     if (integerPart.length() == 0 || isZeroesString(integerPart)) {
-    // przesunięcie mantysy dla liczb typu 0,0...01
-      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1); // + 1 dla nejawnej jedynki
+    // przesunięcie bitów dla liczb typu 0,0...01
+      fractionBits = fractionBits.substr(fractionLeadingZeroesCount + 1); // + 1 dla niejawnej jedynki
     }
 
 
@@ -102,7 +113,10 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
     else result.mantissaBits = ""; // mantysa będzie złożona tylko z ułamku
 
     if (result.mantissaBits.length() < MANTISSA_LEN) // dopełnienie mantysy częścią ułamkową
-      result.mantissaBits += fractionBits.substr(0, min<size_t>(fractionBits.length(), MANTISSA_LEN - result.mantissaBits.length()));
+      result.mantissaBits += fractionBits.substr(
+        0,
+        min<size_t>(fractionBits.length(), MANTISSA_LEN - result.mantissaBits.length())
+      );
 
     result.mantissaBits = result.mantissaBits.substr(0, min<size_t>(result.mantissaBits.length(), MANTISSA_LEN));
     if (result.mantissaBits.length() < MANTISSA_LEN)
@@ -146,6 +160,15 @@ ConversionResult ConvertToIEEE(const string &rawInput) {
   return result;
 }
 
+/**
+ * Zaokrągla mantysę zgodnie z zasadą "round ties to even".
+ * Przyjmuje referencję na (string)       mantysę, którą zaokrągli jeśli uzna to za potrzebne.
+ * Przyjmuje referencję na (int)          wykładnik, który może być inkryminowany, jeśli zaokrąglenie mantysy spowoduje jej przepełnienie.
+ * Przyjmuje referencję na (const string) bity części całej liczby.
+ * Przyjmuje referencję na (const string) bity ułamku liczby bez "0." z wiodącymi 0.
+ * Przyjmuje referencję na (const int)    liczność wiodących zer na początku ułamku.
+ * Nic nie zwraca.
+ */
 static void RoundMantissa(
   string &mantissa, int &exponent,
   const string &integerBits, const string &fractionBits, const int &fractionLeadingZeroesCount
@@ -154,22 +177,34 @@ static void RoundMantissa(
   bool noIntegerPart = false;
   if (integerBits.length() == 0 || isZeroesString(integerBits)) noIntegerPart = true;
 
-  bool bitBehindLSB = false;
-  if (
-      ((integerBits.length() > MANTISSA_LEN) && integerBits[MANTISSA_LEN + 1] == '1' ) // ostatni bit za LSB w części całej
-      || ((fractionBits.length() > MANTISSA_LEN + 1) &&                                // ostatni bit za LSB w ułamku
-        fractionBits[(
-          noIntegerPart // czy mantysa jest złożona tylko z ułamku podanej liczby
-          ? (fractionLeadingZeroesCount + MANTISSA_LEN + 1) // ostatni bit za LSB w ułamku (przesuniętym jeśli trzeba)
-          : (MANTISSA_LEN + 1 - integerBits.length())       // ostatni bit za LSB w ułamku po części całej
-          )] == '1')
-     ) {
-    bitBehindLSB = true;
+  bool bitLSB = mantissa.back() == '1'; // ostatni bit mantysy
+  bool bitGround = false;               // kolejny bit po LSB mantysy
+  bool bitRound = false;                // kolejny bit po bitGround
+  bool bitSticky = false;               // jeśli jest co najmniej jedna 1 w pozostałych bitach
+
+
+  string extendedMantissaBits; // nieobcięte bity mantysy + niejawne 1 na początku
+  if (!noIntegerPart) {
+    extendedMantissaBits = integerBits + fractionBits;
+  } else {
+    extendedMantissaBits = fractionBits.substr(fractionLeadingZeroesCount);
   }
 
-  if (!bitBehindLSB) return; // jeśli bit za LSB 0 to nic nie trzeba robić
+  size_t bitGroundIdx = MANTISSA_LEN + 1; // indeksacja od 0, +1 dla niejawnej jedynki
 
-  // odejmowanie 1 od mantysy
+  if (bitGroundIdx < extendedMantissaBits.length())
+    bitGround = extendedMantissaBits[bitGroundIdx] == '1';
+
+  if (bitGroundIdx + 1 < extendedMantissaBits.length())
+    bitRound = extendedMantissaBits[bitGroundIdx + 1] == '1';
+
+  if (bitGroundIdx + 2 < extendedMantissaBits.length())
+    bitSticky = !isZeroesString(extendedMantissaBits.substr(bitGroundIdx + 2));
+
+  // jeśli ten warunek nie jest spełniony, nie trzeba zaokrąglać w górę
+  if (!(bitGround && (bitRound || bitSticky || bitLSB))) return;
+
+  // zaokrąglenie w górę, czyli dodanie 1 do mantysy
   bool carry = true;
   for (size_t i = mantissa.length(); i != 0; i--) {
     if (!carry) break;
@@ -181,6 +216,17 @@ static void RoundMantissa(
     }
   }
   if (carry) exponent += 1; // jeśli przepełniono mantysę, trzeba dodać 1 do wykładnika
+}
+
+/**
+ * Oblicza wykładnik IEEE754 dla liczb |n| >= 1 z części całej liczby binarnej podanej jako string.
+ * Przyjmuje string zawierający bity części całej liczby.
+ * Zwraca wykładnik do IEEE754 bez BIAS.
+ */
+static int ExponentFromInteger(string &n) {
+  int shifts = n.length() - 1;
+
+  return shifts;
 }
 
 } // namespace conversion
