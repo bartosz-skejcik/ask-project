@@ -10,7 +10,9 @@ QT_CFLAGS := $(shell pkg-config --cflags $(QT_PKG))
 QT_LIBS := $(shell pkg-config --libs $(QT_PKG))
 
 ifeq ($(QT_CFLAGS),)
+ifneq ($(MAKECMDGOALS),clean) # Allow clean, even if QT_PKG or pkg-config misconfigured
 $(error pkg-config could not find $(QT_PKG). Install Qt development files or set QT_PKG accordingly)
+endif
 endif
 
 # Linker flags
@@ -47,9 +49,11 @@ ifeq ($(OS),Windows_NT)
 	# CMD
 	RM = del /f /q
 	RMDIR = del /f /q /s
+	NULLFILE = nul
 else
 	RM = rm -rf
 	RMDIR = rm -rf
+	NULLFILE = /dev/null
 endif
 
 # Default target
@@ -73,10 +77,11 @@ run: $(TARGET)
 
 # Clean generated files and directories
 clean:
-	-@$(RM) Makefile.qmake
-	-@$(RM) Makefile.qmake.Debug
-	-@$(RM) Makefile.qmake.Release
-	-@$(RM) static_main_plugin_import.cpp
+	-$(RM) Makefile.qmake 2> $(NULLFILE)
+	-$(RM) Makefile.qmake.Debug 2> $(NULLFILE)
+	-$(RM) Makefile.qmake.Release 2> $(NULLFILE)
+	-$(RM) static_main_plugin_import.cpp 2> $(NULLFILE)
+	-$(RM) .qmake.stash 2> $(NULLFILE)
 	$(RMDIR) $(BUILD_DIR) $(BIN_DIR)
 
 # Tests

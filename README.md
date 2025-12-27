@@ -16,7 +16,7 @@ Ten projekt konwertuje liczby dziesiętne na ich binarną reprezentację zgodną
 Potrzebujesz:
 
 -   Kompilatora zgodnego z C++17 (g++ 7+ lub clang++ 5+)
--   Biblioteki [Qt](https://www.qt.io/) w wersji 5.0+ (nagłówki + biblioteki)
+-   Biblioteki [Qt](https://www.qt.io/) w wersji 5.12+ (nagłówki + biblioteki)
 -   Narzędzia `make` do budowania
 
 ### Linux (Debian/Ubuntu)
@@ -196,6 +196,7 @@ To ostrzeżenia niekrytyczne i mogą być zignorowane. Kod będzie działał pop
 ├── constants.h                           # Plik nagłówkowy z definicjami stałych
 ├── test.cpp                              # Testy automatyczne używane podczas zaprojektowania programu
 ├── windows_deploy_deep_dependencies.ps1  # Skrypt importujący pliki DLL dla wdrożenia aplikacji na Windows
+├── qmake_static.pro                      # Plik do qmake, który służy do generacji Makefile do konsolidacji statycznej projektu
 ├── Makefile                              # Konfiguracja budowania
 ├── bin/                                  # Skompilowany plik wykonywalny (generowany)
 └── build/                                # Pliki obiektowe (generowane)

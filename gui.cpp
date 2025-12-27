@@ -27,7 +27,7 @@
 #endif
 
 #ifndef INPUT_MAX_CHARS
-#define INPUT_MAX_CHARS 150
+#define INPUT_MAX_CHARS 100
 #endif
 
 #ifndef SUMMARY_TEXT_INTEGER_BITS_MAX_CHARS
@@ -83,6 +83,8 @@ private:
   void RenderResult(const ConversionResult &result);
   void RenderPlaceholder();
   void SetStatus(const QString &text, const QString &color);
+  void HandleInputRejected();
+  void HandleInputTextEdited();
 
   QLineEdit *input_ = nullptr;
   QLabel *status_ = nullptr;
@@ -248,6 +250,10 @@ ConverterWindow::ConverterWindow() {
           &ConverterWindow::HandleClear);
   connect(input_, &QLineEdit::returnPressed, this,
           &ConverterWindow::HandleConvert);
+  connect(input_, &QLineEdit::inputRejected, this,
+          &ConverterWindow::HandleInputRejected);
+  connect(input_, &QLineEdit::textEdited, this,
+          &ConverterWindow::HandleInputTextEdited);
 
   RenderPlaceholder();
 }
@@ -296,6 +302,18 @@ void ConverterWindow::SetStatus(const QString &text, const QString &color) {
           "background: %1; color: #E8ECF3; padding: 10px 12px;"
           "border-radius: 10px; font-size: 14px;")
           .arg(color));
+}
+
+void ConverterWindow::HandleInputRejected() {
+  if (input_->text().length() == INPUT_MAX_CHARS) {
+    SetStatus("Przekroczono limit znaków pola tekstowego", "#7f6626");
+  } else {
+    SetStatus("Wpisany znak jest niedozwolony w tym miejscu", "#7f6626");
+  }
+}
+
+void ConverterWindow::HandleInputTextEdited() {
+  SetStatus("Wpisz liczbę dziesiętną i kliknij Konwertuj.", "#28344B");
 }
 
 } // namespace
